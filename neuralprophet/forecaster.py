@@ -1,24 +1,20 @@
+import logging
 import time
 from collections import OrderedDict
 from typing import Optional, Union
+
 import numpy as np
 import pandas as pd
-
 import torch
 from torch.utils.data import DataLoader
-import logging
 from tqdm import tqdm
 
-from neuralprophet import configure
-from neuralprophet import time_net
-from neuralprophet import time_dataset
-from neuralprophet import df_utils
-from neuralprophet import utils
+from neuralprophet import configure, df_utils, metrics, time_dataset, time_net, utils
 from neuralprophet.plot_forecast import plot, plot_components
-from neuralprophet.plot_forecast_plotly import plot as plot_plotly, plot_components as plot_components_plotly
-from neuralprophet.plot_model_parameters_plotly import plot_parameters as plot_parameters_plotly
+from neuralprophet.plot_forecast_plotly import plot as plot_plotly
+from neuralprophet.plot_forecast_plotly import plot_components as plot_components_plotly
 from neuralprophet.plot_model_parameters import plot_parameters
-from neuralprophet import metrics
+from neuralprophet.plot_model_parameters_plotly import plot_parameters as plot_parameters_plotly
 
 # Ensure compatibility with python 3.7
 try:
@@ -310,13 +306,13 @@ class NeuralProphet:
         changepoints_range=0.8,
         trend_reg=0,
         trend_reg_threshold=False,
-        trend_global_local="local",
+        trend_global_local="global",
         yearly_seasonality="auto",
         weekly_seasonality="auto",
         daily_seasonality="auto",
         seasonality_mode="additive",
         seasonality_reg=0,
-        season_global_local="local",
+        season_global_local="global",
         n_forecasts=1,
         n_lags=0,
         num_hidden_layers=0,
@@ -409,12 +405,12 @@ class NeuralProphet:
         self.config_train.reg_lambda_season = self.config_season.reg_lambda
 
         # Events
-        self.config_events = None
-        self.config_country_holidays = None
+        self.config_events: Optional[configure.ConfigEvents] = None
+        self.config_country_holidays: Optional[configure.ConfigCountryHolidays] = None
 
         # Extra Regressors
         self.config_lagged_regressors: Optional[configure.ConfigLaggedRegressors] = None
-        self.config_regressors = None
+        self.config_regressors: Optional[configure.ConfigLaggedRegressors] = None
 
         # set during fit()
         self.data_freq = None
@@ -529,7 +525,7 @@ class NeuralProphet:
         self._validate_column_name(name)
 
         if self.config_regressors is None:
-            self.config_regressors = {}
+            self.config_regressors = OrderedDict()
         self.config_regressors[name] = configure.Regressor(reg_lambda=regularization, normalize=normalize, mode=mode)
         return self
 
@@ -1514,7 +1510,7 @@ class NeuralProphet:
                 log.warning(
                     "Too few forecasts to plot a line per forecast step." "Plotting a line per forecast origin instead."
                 )
-                return self.plot_last_forecast(
+                return self.plot_latest_forecast(
                     fcst,
                     ax=ax,
                     df_name=df_name,
@@ -1573,12 +1569,13 @@ class NeuralProphet:
         Returns
         -------
             pd.DataFrame
-                columns ``ds``, ``y``, and [``yhat<i>``]
+                columns ``ds``, ``y``, and [``origin-<i>``]
 
                 Note
                 ----
-                where yhat<i> refers to the i-step-ahead prediction for this row's datetime.
-                e.g. yhat3 is the prediction for this datetime, predicted 3 steps ago, "3 steps old".
+                where origin-<i> refers to the (i+1)-th latest prediction for this row's datetime.
+                e.g. origin-3 is the prediction for this datetime, predicted 4 steps before the last step.
+                The very latest predcition is origin-0.
         Examples
         --------
         We may get the df of the latest forecast:
@@ -1610,10 +1607,12 @@ class NeuralProphet:
             fcst = fcst[-(include_previous_forecasts + self.n_forecasts) :]
         elif include_history_data is True:
             fcst = fcst
-        fcst = utils.fcst_df_to_last_forecast(fcst, self.config_train.quantiles, n_last=1 + include_previous_forecasts)
+        fcst = utils.fcst_df_to_latest_forecast(
+            fcst, self.config_train.quantiles, n_last=1 + include_previous_forecasts
+        )
         return fcst
 
-    def plot_last_forecast(
+    def plot_latest_forecast(
         self,
         fcst,
         df_name=None,
@@ -1625,7 +1624,7 @@ class NeuralProphet:
         plot_history_data=None,
         plotting_backend="default",
     ):
-        """Plot the NeuralProphet forecast, including history.
+        """Plot the latest NeuralProphet forecast(s), including history.
 
         Parameters
         ----------
@@ -1671,7 +1670,7 @@ class NeuralProphet:
                 log.info(f"Plotting data from ID {df_name}")
         if len(self.config_train.quantiles) > 1:
             log.warning(
-                "Plotting last forecasts when uncertainty estimation enabled"
+                "Plotting latest forecasts when uncertainty estimation enabled"
                 " plots the forecasts only for the median quantile."
             )
         if plot_history_data is None:
@@ -1680,7 +1679,9 @@ class NeuralProphet:
             fcst = fcst[-(include_previous_forecasts + self.n_forecasts) :]
         elif plot_history_data is True:
             fcst = fcst
-        fcst = utils.fcst_df_to_last_forecast(fcst, self.config_train.quantiles, n_last=1 + include_previous_forecasts)
+        fcst = utils.fcst_df_to_latest_forecast(
+            fcst, self.config_train.quantiles, n_last=1 + include_previous_forecasts
+        )
 
         # Check whether the default plotting backend is overwritten
         plotting_backend = (
@@ -2151,13 +2152,17 @@ class NeuralProphet:
                 checked dataframe
         """
         df, _, _, _, _ = df_utils.prep_or_copy_df(df)
-        return df_utils.check_dataframe(
+        df, regressors_to_remove = df_utils.check_dataframe(
             df=df,
             check_y=check_y,
             covariates=self.config_lagged_regressors if exogenous else None,
             regressors=self.config_regressors if exogenous else None,
             events=self.config_events if exogenous else None,
         )
+        for reg in regressors_to_remove:
+            log.warning(f"Removing regressor {reg} because it is not present in the data.")
+            self.config_regressors.pop(reg)
+        return df
 
     def _validate_column_name(self, name, events=True, seasons=True, regressors=True, covariates=True):
         """Validates the name of a seasonality, event, or regressor.
@@ -2252,7 +2257,7 @@ class NeuralProphet:
         self.config_normalization.init_data_params(
             df=df,
             config_lagged_regressors=self.config_lagged_regressors,
-            config_regressor=self.config_regressors,
+            config_regressors=self.config_regressors,
             config_events=self.config_events,
         )
 
@@ -2545,7 +2550,7 @@ class NeuralProphet:
                     live_out.append("ExtremaPrinter")
                 live_loss = PlotLosses(outputs=live_out)
                 plot_live_loss = True
-            except:
+            except:  # noqa: E722
                 log.warning(
                     "To plot live loss, please install neuralprophet[live]."
                     "Using pip: 'pip install neuralprophet[live]'"
@@ -2674,7 +2679,7 @@ class NeuralProphet:
         val_metrics = metrics.MetricsCollection([m.new() for m in self.metrics.batch_metrics])
         if self.highlight_forecast_step_n is not None:
             val_metrics.add_specific_target(target_pos=self.highlight_forecast_step_n - 1)
-        ## Run
+        # Run
         val_metrics_dict = self._evaluate_epoch(loader, val_metrics)
 
         if self.true_ar_weights is not None:
@@ -2769,7 +2774,7 @@ class NeuralProphet:
         if self.max_lags > 0:
             if periods > 0 and periods != self.n_forecasts:
                 periods = self.n_forecasts
-                log.warning(f"Number of forecast steps is defined by n_forecasts. " "Adjusted to {self.n_forecasts}.")
+                log.warning(f"Number of forecast steps is defined by n_forecasts. Adjusted to {self.n_forecasts}.")
 
         if periods > 0:
             future_df = df_utils.make_future_df(
@@ -2779,7 +2784,7 @@ class NeuralProphet:
                 freq=self.data_freq,
                 config_events=self.config_events,
                 events_df=events_df,
-                config_regressor=self.config_regressors,
+                config_regressors=self.config_regressors,
                 regressors_df=regressors_df,
             )
             if len(df) > 0:
@@ -2963,7 +2968,7 @@ class NeuralProphet:
                     components[name] = value * scale_y
                     if "trend" in name:
                         components[name] += shift_y
-                ### scale multiplicative components
+                # scale multiplicative components
                 elif multiplicative:
                     components[name] = value * trend * scale_y  # output absolute value of respective additive component
 

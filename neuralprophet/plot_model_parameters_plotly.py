@@ -1,9 +1,10 @@
+import datetime
+import logging
+
 import numpy as np
 import pandas as pd
-import logging
-from neuralprophet.utils import set_y_as_percent
-from neuralprophet.plot_model_parameters import predict_season_from_dates, predict_one_season
-import datetime
+
+from neuralprophet.plot_model_parameters import predict_one_season, predict_season_from_dates
 
 log = logging.getLogger("NP.plotly")
 
@@ -813,9 +814,6 @@ def plot_parameters(
     # Create Plotly subplot figure and add the components to it
     fig = make_subplots(npanel, cols=1, print_grid=False)
     fig.update_layout(go.Layout(showlegend=False, width=figsize[0], height=figsize[1] * npanel, **layout_args))
-
-    if npanel == 1:
-        axes = [axes]
 
     for i, comp in enumerate(components):
         is_multiplicative = False
