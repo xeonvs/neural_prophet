@@ -679,6 +679,7 @@ class NeuralProphet:
         checkpointing: bool = False,
         continue_training: bool = False,
         num_workers: int = 0,
+        progress_ext_callback = None
     ):
         """Train, and potentially evaluate model.
 
@@ -725,7 +726,8 @@ class NeuralProphet:
                 Note: using multiple workers and therefore distributed training might significantly increase
                 the training time since each batch needs to be copied to each worker for each epoch. Keeping
                 all data on the main process might be faster for most datasets.
-
+            progress_ext_callback : pl.callbacks.TQDMProgressBar, None
+                external callback for progress updating. For example see logger.ProgressBar class
         Returns
         -------
             pd.DataFrame
@@ -769,6 +771,7 @@ class NeuralProphet:
         if progress == "plot" and metrics is False:
             log.warning("Progress plot requires metrics to be enabled. Enabling the default metrics.")
             metrics = metrics.get_metrics(True)
+            progress_ext_callback = None
 
         if not self.config_normalization.global_normalization:
             log.warning("When Global modeling with local normalization, metrics are displayed in normalized scale.")
@@ -777,6 +780,7 @@ class NeuralProphet:
             checkpointing = False
             self.metrics = False
             progress = None
+            progress_ext_callback = None
 
         # Setup
         # List of different time series IDs, for global-local modelling (if enabled)
@@ -813,6 +817,7 @@ class NeuralProphet:
                 checkpointing_enabled=checkpointing,
                 continue_training=continue_training,
                 num_workers=num_workers,
+                progress_ext_callback=progress_ext_callback,
             )
         else:
             df_val, _, _, _ = df_utils.prep_or_copy_df(validation_df)
@@ -826,6 +831,7 @@ class NeuralProphet:
                 checkpointing_enabled=checkpointing,
                 continue_training=continue_training,
                 num_workers=num_workers,
+                progress_ext_callback=progress_ext_callback,
             )
 
         # Show training plot
@@ -2573,6 +2579,7 @@ class NeuralProphet:
         checkpointing_enabled: bool = False,
         continue_training=False,
         num_workers=0,
+        progress_ext_callback=None,
     ):
         """
         Execute model training procedure for a configured number of epochs.
@@ -2593,7 +2600,8 @@ class NeuralProphet:
                 whether to continue training from the last checkpoint
             num_workers : int
                 number of workers for data loading
-
+            progress_ext_callback : pl.callbacks.TQDMProgressBar, None
+                external callback for progress updating. For example see logger.ProgressBar class
         Returns
         -------
             pd.DataFrame
@@ -2628,6 +2636,7 @@ class NeuralProphet:
             metrics_enabled=metrics_enabled,
             checkpointing_enabled=checkpointing_enabled,
             num_batches_per_epoch=len(train_loader),
+            progress_ext_callback=progress_ext_callback,
         )
 
         # Tune hyperparams and train

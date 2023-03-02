@@ -604,8 +604,8 @@ def fcst_df_to_latest_forecast(fcst, quantiles, n_last=1):
         endcol = n_forecast_steps
         for quantile_idx in range(1, len(quantiles)):
             yhats_quants_split = yhats_quants.iloc[
-                :, startcol:endcol
-            ]  # split yhats_quants to consider one quantile at a time
+                                 :, startcol:endcol
+                                 ]  # split yhats_quants to consider one quantile at a time
             forecast_name_quants = "origin-{} {}%".format((i), quantiles[quantile_idx] * 100)
             df[forecast_name_quants] = None
             rows = len(df) + np.arange(-n_forecast_steps - i, -i, 1)
@@ -704,7 +704,7 @@ def smooth_loss_and_suggest(lr_finder_results, window=10):
     try:
         loss = np.convolve(weights / weights.sum(), loss, mode="valid")
         # Remove min and max lr's to match the loss distribution
-        lr = lr[half_window : -(half_window - 1)] if half_window > 1 else lr[half_window:]
+        lr = lr[half_window: -(half_window - 1)] if half_window > 1 else lr[half_window:]
     except ValueError:
         log.warning(
             f"The number of loss values ({len(loss)}) is too small to apply smoothing with a the window size of {window}."
@@ -738,6 +738,7 @@ def configure_trainer(
     metrics_enabled: bool = False,
     checkpointing_enabled: bool = False,
     num_batches_per_epoch: int = 100,
+    progress_ext_callback: pl.callbacks.TQDMProgressBar = None,
 ):
     """
     Configures the PyTorch Lightning trainer.
@@ -764,7 +765,8 @@ def configure_trainer(
             If False, no checkpointing is performed. Checkpointing reduces the training speed.
         num_batches_per_epoch : int
             Number of batches per epoch.
-
+        progress_ext_callback : pl.callbacks.TQDMProgressBar, None
+            external callback for progress updating. For example see logger.ProgressBar class
     Returns
     -------
         pl.Trainer
@@ -826,9 +828,11 @@ def configure_trainer(
         checkpoint_callback = None
 
     # Configure the progress bar, refresh every epoch
-    if progress_bar_enabled:
+    if progress_bar_enabled and progress_ext_callback is None:
         prog_bar_callback = ProgressBar(refresh_rate=num_batches_per_epoch, epochs=config_train.epochs)
         callbacks.append(prog_bar_callback)
+    elif progress_bar_enabled and progress_ext_callback is not None:
+        callbacks.append(progress_ext_callback)
     else:
         config["enable_progress_bar"] = False
 
