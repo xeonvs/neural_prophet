@@ -2,6 +2,7 @@ import logging
 import math
 import os
 from typing import Optional
+from unittest.mock import patch
 
 import numpy as np
 import pytorch_lightning as pl
@@ -292,12 +293,13 @@ def find_learning_rate(model, loader, trainer, train_epochs):
     tuner = Tuner(trainer)
     model.finding_lr = True
     # model.train_loader = loader
-    lr_finder = tuner.lr_find(
-        model=model,
-        train_dataloaders=loader,
-        # val_dataloaders=val_loader, # not used, but lead to Lightning bug if not provided in prior versions.
-        **lr_finder_args,
-    )
+    with patch.dict(os.environ, {"TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD": "1"}):
+        lr_finder = tuner.lr_find(
+            model=model,
+            train_dataloaders=loader,
+            # val_dataloaders=val_loader, # not used, but lead to Lightning bug if not provided in prior versions.
+            **lr_finder_args,
+        )
     model.finding_lr = False
 
     # Estimate the optimal learning rate from the loss curve

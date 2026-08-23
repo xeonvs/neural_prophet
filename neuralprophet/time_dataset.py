@@ -388,8 +388,6 @@ class TimeDataset(Dataset):
                 if normalized_holiday in country_holidays_dict:
                     dates = country_holidays_dict[normalized_holiday]
                     feature.loc[df["ds"].isin(dates)] = 1.0
-                else:
-                    raise ValueError(f"Holiday {holiday} not found in {config_country_holidays.country} holidays")
 
                 additive_names, multiplicative_names = add_offset_features(feature, normalized_holiday, config)
                 additive_holiday_names.extend(additive_names)

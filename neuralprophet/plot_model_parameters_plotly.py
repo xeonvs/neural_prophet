@@ -66,6 +66,10 @@ def get_dynamic_axis_range(df_range, type, pad=0.05, inverse=False):
     if type == "dt":
         range_min = min(df_range) + (min(df_range) - delta)
         range_max = max(df_range) + (delta - min(df_range))
+        if isinstance(range_min, pd.Timestamp):
+            range_min = range_min.to_pydatetime()
+        if isinstance(range_max, pd.Timestamp):
+            range_max = range_max.to_pydatetime()
     elif type == "numeric":
         range_min = min(df_range) - delta
         range_max = max(df_range) + delta
@@ -116,6 +120,7 @@ def plot_trend_change(m, quantile, plot_name="Trend Change", df_name="__df__"):
         weights = m.model.trend.get_trend_deltas.detach()[quantile_index, 0, :].numpy()
     # add end-point to force scale to match trend plot
     cp_t = np.append(cp_t, start + scale)
+    cp_t = [value.to_pydatetime() if isinstance(value, pd.Timestamp) else value for value in cp_t]
     weights = np.append(weights, [0.0])
 
     traces = []

@@ -99,7 +99,7 @@ def load(path: FILE_LIKE, map_location=None):
     if map_location is not None:
         torch_map_location = torch.device(map_location)
 
-    m = torch.load(path, map_location=torch_map_location)
+    m = torch.load(path, map_location=torch_map_location, weights_only=False)
     m.restore_trainer(accelerator=map_location)
     return m
 

@@ -229,7 +229,8 @@ def _make_future_dataframe(
                     f"{nan_at_end + 1} missing values were detected at the end of df before df was extended into "
                     "the future. Please make sure there are no NaN values at the end of df."
                 )
-            df["y"].iloc[-(nan_at_end + 1) :].ffill(inplace=True)
+            tail_index = df.index[-(nan_at_end + 1) :]
+            df.loc[tail_index, "y"] = df.loc[tail_index, "y"].ffill()
             log.warning(
                 f"{nan_at_end + 1} missing values were forward-filled at the end of df before df was extended into the "
                 "future. Please make sure there are no NaN values at the end of df."
@@ -266,7 +267,7 @@ def _make_future_dataframe(
             regressors_df=regressors_df,
         )
         if len(df) > 0:
-            df = pd.concat([df, future_df])
+            df = pd.concat([df, future_df], ignore_index=True)
         else:
             df = future_df
     df = df.reset_index(drop=True)
