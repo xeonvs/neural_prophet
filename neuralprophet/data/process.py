@@ -512,6 +512,18 @@ def _handle_missing_data(
             df = df_dropped
             log.info(f"Dropped {n_dropped} rows at the end with NaNs in 'y' column.")
 
+    conditional_cols = []
+    if config_seasonality is not None:
+        conditional_cols = list(
+            set(
+                [
+                    value.condition_name
+                    for key, value in config_seasonality.periods.items()
+                    if value.condition_name is not None
+                ]
+            )
+        )
+
     if config_missing.impute_missing:
         # impute missing values
         data_columns = []
@@ -523,18 +535,7 @@ def _handle_missing_data(
             data_columns.extend(config_regressors.regressors.keys())
         if config_events is not None:
             data_columns.extend(config_events.keys())
-        conditional_cols = []
-        if config_seasonality is not None:
-            conditional_cols = list(
-                set(
-                    [
-                        value.condition_name
-                        for key, value in config_seasonality.periods.items()
-                        if value.condition_name is not None
-                    ]
-                )
-            )
-            data_columns.extend(conditional_cols)
+        data_columns.extend(conditional_cols)
         for column in data_columns:
             sum_na = df[column].isna().sum()
             if sum_na > 0:
@@ -559,6 +560,9 @@ def _handle_missing_data(
     if dropped_trailing_y and predicting:
         # add trailing y values again if in predict mode
         df = pd.concat([df, df_to_add])
-        if config_seasonality is not None and len(conditional_cols) > 0:
-            df[conditional_cols] = df[conditional_cols].ffill()  # type: ignore
+        if len(conditional_cols) > 0:
+            # Restore only future conditions within their own series. In particular,
+            # do not fill internal missing observations when imputation is disabled.
+            conditions = df.groupby("ID")[conditional_cols].ffill()
+            df.loc[df_to_add.index, conditional_cols] = conditions.loc[df_to_add.index]
     return df
